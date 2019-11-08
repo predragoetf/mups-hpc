@@ -1,0 +1,230 @@
+# include <stdlib.h>
+# include <stdio.h>
+# include <math.h>
+# include <time.h>
+# include <omp.h>
+
+double cpu_time ( void ) {
+  double value;
+
+  //value = ( double ) clock ( ) 
+  //      / ( double ) CLOCKS_PER_SEC;
+  value = (double) omp_get_wtime();
+
+  return value;
+}
+
+int prime_number ( int n ) {
+  int i;
+  int j;
+  int prime;
+  int total;
+
+  total = 0;
+
+  for ( i = 2; i <= n; i++ )
+  {
+    prime = 1;
+    for ( j = 2; j < i; j++ )
+    {
+      if ( ( i % j ) == 0 )
+      {
+        prime = 0;
+        break;
+      }
+    }
+    total = total + prime;
+  }
+  return total;
+}
+
+int prime_number_omp2 ( int n ) {
+  int i;
+  int j;
+  int prime;
+  int total;
+  int numThreads;
+  int myId;
+  int start;
+
+  total = 0;
+
+  #pragma omp parallel default(none) firstprivate(n) private(i, j, prime, myId, numThreads, start) reduction(+:total)
+  {
+    numThreads = omp_get_num_threads();
+    myId = omp_get_thread_num();
+    //chunk = (n-1+numThreads-1)/numThreads;
+    start = 2+myId;
+    //end = (start+chunk-1<n?start + chunk-1:n);
+    for ( i = start; i <= n; i+=numThreads )
+    {
+      prime = 1;
+      for ( j = 2; j < i; j++ )
+      {
+        if ( ( i % j ) == 0 )
+        {
+          prime = 0;
+          break;
+        }
+      }
+      total = total + prime;
+    }
+  }
+  return total;
+}
+int prime_number_omp ( int n ) {
+  int i;
+  int j;
+  int prime;
+  int total;
+  int ticket = 2;
+
+  total = 0;
+
+  #pragma omp parallel default(none) firstprivate(n) shared(ticket) private(i, j, prime) reduction(+:total)
+  {
+    i = 1; 
+
+    while (i<=n){
+      #pragma omp critical 
+      {
+        i = ticket++;  
+      }
+      if (i>n) break;
+      prime = 1;
+      for ( j = 2; j < i; j++ )
+      {
+        if ( ( i % j ) == 0 )
+        {
+          prime = 0;
+          break;
+        }
+      }
+      total = total + prime;
+    }
+  }
+  return total;
+}
+
+void timestamp ( void ){
+# define TIME_SIZE 40
+
+  static char time_buffer[TIME_SIZE];
+  const struct tm *tm;
+  size_t len;
+  time_t now;
+
+  now = time ( NULL );
+  tm = localtime ( &now );
+
+  len = strftime ( time_buffer, TIME_SIZE, "%d %B %Y %I:%M:%S %p", tm );
+
+  printf ( "%s\n", time_buffer );
+
+  return;
+# undef TIME_SIZE
+}
+
+int test ( int n_lo, int n_hi, int n_factor );
+int test_omp (int n_lo, int n_hi, int n_factor);
+
+int main (int argc, char *argv[] ) {
+  int n_factor;
+  int n_hi;
+  int n_lo;
+
+  timestamp ( );
+  printf ( "\n" );
+  printf ( "PRIME TEST\n" );
+
+  if ( argc !=4 ) {
+    n_lo = 1;
+    n_hi = 131072;
+    n_factor = 2;
+  } else {
+    n_lo = atoi(argv[1]);
+    n_hi = atoi(argv[2]);
+    n_factor = atoi(argv[3]);
+  }  
+
+  double s_time = cpu_time();
+  int br_s = test(n_lo, n_hi, n_factor );
+  s_time = cpu_time()-s_time;
+  double p_time = cpu_time();
+  int br_p = test_omp(n_lo, n_hi, n_factor);
+  p_time = cpu_time()-p_time;
+
+  printf ( "\n" );
+  printf ( "PRIME_TEST\n" );
+  printf ( "  Normal end of execution.\n" );
+  printf ("Vreme sekvencijalne implementacije: %f\n", s_time);
+  printf ("Vreme paralelne     implementacije: %f\n", p_time);  
+
+  if (br_s==br_p) printf ("Test PASSED");
+  else printf ("Test FAILED");
+  printf ( "\n" );
+  timestamp ( );
+
+  return 0;
+}
+
+int test ( int n_lo, int n_hi, int n_factor ) {
+  int i;
+  int n;
+  int primes;
+  double ctime;
+
+  printf ( "\n" );
+  printf ( "  Call PRIME_NUMBER to count the primes from 1 to N (sequential).\n" );
+  printf ( "\n" );
+  printf ( "         N        Pi          Time\n" );
+  printf ( "\n" );
+
+  n = n_lo;
+
+  while ( n <= n_hi )
+  {
+    ctime = cpu_time ( );
+
+    primes = prime_number ( n );
+
+    ctime = cpu_time ( ) - ctime;
+
+    printf ( "  %8d  %8d  %14f\n", n, primes, ctime );
+    n = n * n_factor;
+  }
+ 
+  return primes;
+}
+
+int test_omp ( int n_lo, int n_hi, int n_factor ) {
+  int i;
+  int n;
+  int primes;
+  double ctime;
+
+  printf ( "\n" );
+  printf ( "  Call PRIME_NUMBER to count the primes from 1 to N (parallel).\n" );
+  printf ( "\n" );
+  printf ( "         N        Pi          Time\n" );
+  printf ( "\n" );
+
+  n = n_lo;
+
+  while ( n <= n_hi )
+  {
+    ctime = cpu_time ( );
+
+    primes = prime_number_omp ( n );
+
+    ctime = cpu_time ( ) - ctime;
+
+    printf ( "  %8d  %8d  %14f\n", n, primes, ctime );
+    n = n * n_factor;
+  }
+ 
+  return primes;
+}
+
+
+
